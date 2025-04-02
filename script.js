@@ -2,9 +2,14 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- Configuration ---
   const GRID_SIZE = 30; // Number of cells horizontally and vertically
   const CELL_SIZE = 20; // Size of each cell in pixels
+
+  // Move runway to center
+  const RUNWAY_COL = Math.floor(GRID_SIZE / 2);
   const RUNWAY_START_ROW = Math.floor(GRID_SIZE / 2) - 1;
   const RUNWAY_END_ROW = Math.floor(GRID_SIZE / 2) + 1;
-  const RUNWAY_COL = GRID_SIZE - 1; // Runway on the right edge
+
+  // Landing detection radius around runway
+  const LANDING_RADIUS = 1;
 
   const UPDATE_INTERVAL_MS = 100; // How often the game state updates (milliseconds)
   const SAFE_DISTANCE_SQUARED = 4 * 4; // Minimum safe distance (squared for efficiency) - 4 cells
@@ -40,7 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
     airspaceGrid.style.width = `${GRID_SIZE * CELL_SIZE}px`;
     airspaceGrid.style.height = `${GRID_SIZE * CELL_SIZE}px`;
 
-    // Add Runway
+    // Add Runway (now in center)
     for (let r = RUNWAY_START_ROW; r <= RUNWAY_END_ROW; r++) {
       const runwaySegment = document.createElement("div");
       runwaySegment.classList.add("runway");
@@ -55,7 +60,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Add click listener to the grid for setting waypoints
     airspaceGrid.addEventListener("click", handleGridClick);
 
-    logMessage("Grid initialized.");
+    logMessage("Grid initialized. Runway positioned in center.");
   }
 
   function resetSimulation() {
@@ -103,7 +108,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Spawn randomly on left, top, or bottom edge (avoiding corners initially)
     let startX, startY;
-    const edge = Math.floor(Math.random() * 3); // 0: left, 1: top, 2: bottom
+    const edge = Math.floor(Math.random() * 4); // 0: left, 1: top, 2: bottom, 3: right
 
     if (edge === 0) {
       // Left edge
@@ -111,32 +116,41 @@ document.addEventListener("DOMContentLoaded", () => {
       startY = Math.random() * GRID_SIZE;
     } else if (edge === 1) {
       // Top edge
-      startX = Math.random() * (GRID_SIZE - 1); // Avoid runway column
+      startX = Math.random() * GRID_SIZE;
       startY = 0;
-    } else {
+    } else if (edge === 2) {
       // Bottom edge
-      startX = Math.random() * (GRID_SIZE - 1); // Avoid runway column
+      startX = Math.random() * GRID_SIZE;
       startY = GRID_SIZE - 1;
+    } else {
+      // Right edge
+      startX = GRID_SIZE - 1;
+      startY = Math.random() * GRID_SIZE;
     }
+
+    // Set a random initial direction in linear path
+    const randomAngle = Math.random() * 2 * Math.PI; // Random angle in radians
 
     const ac = {
       id: aircraftCounter,
       callsign: callsign,
-      angle: 0, // Add angle property to store current direction
+      angle: randomAngle, // Random initial angle
       x: startX, // Use floating point for smoother movement
       y: startY,
       element: document.createElement("div"),
       waypoints: [], // Array of {x, y} points
       currentWaypointIndex: 0,
-      targetRunwayY:
-        RUNWAY_START_ROW +
-        Math.random() * (RUNWAY_END_ROW - RUNWAY_START_ROW + 1), // Target a random spot on the runway
+      targetRunwayY: RUNWAY_START_ROW + 1, // Middle of runway
       state: "flying", // flying, landing, landed, warning, collided
       isSelected: false,
       justCollided: false, // Flag to handle collision event once
+      linearMode: true, // New flag to indicate aircraft is flying in a linear path
+      linearVector: {
+        // Vector to represent linear path direction
+        dx: Math.cos(randomAngle),
+        dy: Math.sin(randomAngle),
+      },
     };
-
-    // We no longer add initial runway waypoint - aircraft will only go to the runway if directed
 
     ac.element.classList.add("aircraft");
     ac.element.textContent = callsign; // Display callsign
@@ -155,12 +169,11 @@ document.addEventListener("DOMContentLoaded", () => {
     airspaceGrid.appendChild(ac.element);
     aircraft.push(ac);
 
-    // If no waypoints, aircraft will hover in place until directed
     updateAircraftElementPosition(ac); // Initial position and arrow rotation
     logMessage(
       `Aircraft ${ac.callsign} spawned at (${ac.x.toFixed(1)}, ${ac.y.toFixed(
         1
-      )}). Awaiting directions.`
+      )}) with heading ${Math.round((ac.angle * 180) / Math.PI)}°`
     );
   }
 
@@ -194,61 +207,113 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function moveAircraft(ac, deltaTime) {
     if (ac.state !== "flying" && ac.state !== "warning") return; // Don't move if landed, collided etc.
-    if (
-      ac.waypoints.length === 0 ||
-      ac.currentWaypointIndex >= ac.waypoints.length
-    )
-      return; // No target
-
-    const targetWaypoint = ac.waypoints[ac.currentWaypointIndex];
-    const targetX = targetWaypoint.x;
-    const targetY = targetWaypoint.y;
-
-    const dx = targetX - ac.x;
-    const dy = targetY - ac.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    let moveAngle = ac.angle; // Keep previous angle if not moving
 
     const moveDistance = tilesPerSecond * deltaTime;
 
-    if (distance < moveDistance || distance < 0.1) {
-      // Reached waypoint or very close
-      ac.x = targetX;
-      ac.y = targetY;
-      ac.currentWaypointIndex++; // Move to next waypoint
+    // Check if aircraft has waypoints to follow
+    if (
+      ac.waypoints.length > 0 &&
+      ac.currentWaypointIndex < ac.waypoints.length
+    ) {
+      // Waypoint mode
+      const targetWaypoint = ac.waypoints[ac.currentWaypointIndex];
+      const targetX = targetWaypoint.x;
+      const targetY = targetWaypoint.y;
 
-      // Check if the reached waypoint is the runway
-      if (
-        ac.x >= RUNWAY_COL &&
-        ac.y >= RUNWAY_START_ROW &&
-        ac.y <= RUNWAY_END_ROW &&
-        ac.currentWaypointIndex >= ac.waypoints.length
-      ) {
-        handleLanding(ac);
-      } else if (ac.currentWaypointIndex < ac.waypoints.length) {
-        // Set angle towards the *new* next waypoint
-        const nextTargetWaypoint = ac.waypoints[ac.currentWaypointIndex];
-        const nextDx = nextTargetWaypoint.x - ac.x;
-        const nextDy = nextTargetWaypoint.y - ac.y;
-        if (nextDx !== 0 || nextDy !== 0) {
-          // Avoid NaN if already at next waypoint
-          moveAngle = Math.atan2(nextDy, nextDx);
+      const dx = targetX - ac.x;
+      const dy = targetY - ac.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance < moveDistance || distance < 0.1) {
+        // Reached waypoint or very close
+        ac.x = targetX;
+        ac.y = targetY;
+        ac.currentWaypointIndex++; // Move to next waypoint
+
+        // If no more waypoints, switch to linear mode with current angle
+        if (ac.currentWaypointIndex >= ac.waypoints.length) {
+          ac.linearMode = true;
+          ac.linearVector = {
+            dx: Math.cos(ac.angle),
+            dy: Math.sin(ac.angle),
+          };
+          logMessage(
+            `${ac.callsign} reached final waypoint. Continuing on linear path.`
+          );
+        } else {
+          // Set angle towards the next waypoint
+          const nextTargetWaypoint = ac.waypoints[ac.currentWaypointIndex];
+          const nextDx = nextTargetWaypoint.x - ac.x;
+          const nextDy = nextTargetWaypoint.y - ac.y;
+          if (nextDx !== 0 || nextDy !== 0) {
+            // Avoid NaN if already at next waypoint
+            ac.angle = Math.atan2(nextDy, nextDx);
+          }
         }
+      } else {
+        // Move towards waypoint
+        ac.x += (dx / distance) * moveDistance;
+        ac.y += (dy / distance) * moveDistance;
+        // Calculate angle for the arrow based on current movement
+        ac.angle = Math.atan2(dy, dx); // Calculate angle in radians
       }
-    } else {
-      // Move towards waypoint
-      ac.x += (dx / distance) * moveDistance;
-      ac.y += (dy / distance) * moveDistance;
-      // Calculate angle for the arrow based on current movement
-      moveAngle = Math.atan2(dy, dx); // Calculate angle in radians
+    } else if (ac.linearMode) {
+      // Linear mode - continue in straight line
+      ac.x += ac.linearVector.dx * moveDistance;
+      ac.y += ac.linearVector.dy * moveDistance;
+
+      // Handle out of bounds by bouncing off edges to keep them in game area
+      if (ac.x < 0) {
+        ac.x = 0;
+        ac.linearVector.dx *= -1;
+        ac.angle = Math.atan2(ac.linearVector.dy, ac.linearVector.dx);
+      } else if (ac.x >= GRID_SIZE) {
+        ac.x = GRID_SIZE - 0.01;
+        ac.linearVector.dx *= -1;
+        ac.angle = Math.atan2(ac.linearVector.dy, ac.linearVector.dx);
+      }
+
+      if (ac.y < 0) {
+        ac.y = 0;
+        ac.linearVector.dy *= -1;
+        ac.angle = Math.atan2(ac.linearVector.dy, ac.linearVector.dx);
+      } else if (ac.y >= GRID_SIZE) {
+        ac.y = GRID_SIZE - 0.01;
+        ac.linearVector.dy *= -1;
+        ac.angle = Math.atan2(ac.linearVector.dy, ac.linearVector.dx);
+      }
     }
-    ac.angle = moveAngle; // Store the calculated angle
+
+    // Check for landing (now using radius detection around runway)
+    checkForLanding(ac);
+  }
+
+  function checkForLanding(ac) {
+    // Is the aircraft near the runway?
+    const runwayX = RUNWAY_COL;
+    const runwayYMiddle = (RUNWAY_START_ROW + RUNWAY_END_ROW) / 2;
+
+    const dx = ac.x - runwayX;
+    const dy = ac.y - runwayYMiddle;
+    const distanceSquared = dx * dx + dy * dy;
+
+    // Check if aircraft is within landing radius of runway and between runway start/end
+    const inLandingZone =
+      ac.y >= RUNWAY_START_ROW - LANDING_RADIUS &&
+      ac.y <= RUNWAY_END_ROW + LANDING_RADIUS;
+
+    // Use the squared distance for efficiency
+    const landingRadiusSquared = LANDING_RADIUS * LANDING_RADIUS;
+
+    if (inLandingZone && distanceSquared <= landingRadiusSquared) {
+      handleLanding(ac);
+    }
   }
 
   function handleLanding(ac) {
     if (ac.state === "landed") return; // Already landed
     ac.state = "landed";
-    logMessage(`Aircraft ${ac.callsign} landed successfully.`);
+    logMessage(`Aircraft ${ac.callsign} landed successfully at runway.`);
     landedCount++;
     ac.element.remove(); // Remove from display
     // Remove from active aircraft array
@@ -310,8 +375,6 @@ document.addEventListener("DOMContentLoaded", () => {
           if (ac1.state === "flying") ac1.state = "warning";
           if (ac2.state === "flying") ac2.state = "warning";
           // Avoid spamming log with warnings - maybe only log once per pair?
-          // For simplicity, we log every time they are close for now.
-          // logMessage(`WARN: Proximity alert between ${ac1.callsign} and ${ac2.callsign}.`);
         }
       }
     }
@@ -334,7 +397,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (clickedAc.isSelected) {
       selectedAircraft = clickedAc;
       logMessage(
-        `Aircraft ${clickedAc.callsign} selected. Click grid for next waypoint.`
+        `Aircraft ${clickedAc.callsign} selected. Click grid for waypoint.`
       );
     } else {
       selectedAircraft = null; // Deselected
@@ -371,30 +434,30 @@ document.addEventListener("DOMContentLoaded", () => {
     // Create the new waypoint
     const newWaypoint = { x: targetX, y: targetY };
 
-    // Clear existing waypoints *after* the one the plane is currently heading towards
-    selectedAircraft.waypoints = selectedAircraft.waypoints.slice(
-      0,
-      selectedAircraft.currentWaypointIndex + 1
-    );
-    selectedAircraft.waypoints.push(newWaypoint);
+    // Switch to waypoint mode and clear any previous waypoints
+    selectedAircraft.linearMode = false;
+    selectedAircraft.waypoints = [newWaypoint];
+    selectedAircraft.currentWaypointIndex = 0;
 
-    // Check if the user clicked on the runway
-    const isOnRunway =
-      targetX >= RUNWAY_COL &&
-      targetY >= RUNWAY_START_ROW &&
-      targetY <= RUNWAY_END_ROW;
+    // Check if the user clicked on/near the runway
+    const isNearRunway =
+      Math.abs(targetX - RUNWAY_COL) <= LANDING_RADIUS &&
+      targetY >= RUNWAY_START_ROW - LANDING_RADIUS &&
+      targetY <= RUNWAY_END_ROW + LANDING_RADIUS;
 
-    if (isOnRunway) {
+    if (isNearRunway) {
       logMessage(
-        `${selectedAircraft.callsign} directed to land at (${targetX.toFixed(
+        `${
+          selectedAircraft.callsign
+        } directed toward runway at (${targetX.toFixed(1)}, ${targetY.toFixed(
           1
-        )}, ${targetY.toFixed(1)}).`
+        )}).`
       );
     } else {
       logMessage(
-        `New waypoint set for ${
-          selectedAircraft.callsign
-        } at (${targetX.toFixed(1)}, ${targetY.toFixed(1)}).`
+        `${selectedAircraft.callsign} directed to (${targetX.toFixed(
+          1
+        )}, ${targetY.toFixed(1)}).`
       );
     }
 
@@ -407,12 +470,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     updateAircraftElementPosition(selectedAircraft); // Update visuals immediately
-
-    // Keep the aircraft selected after setting a waypoint
-    // If you want to deselect after setting:
-    // selectedAircraft.isSelected = false;
-    // updateAircraftElementPosition(selectedAircraft);
-    // selectedAircraft = null;
   }
 
   // --- Game Loop ---
@@ -511,4 +568,5 @@ document.addEventListener("DOMContentLoaded", () => {
   // Display initial settings in log
   logMessage(`Initial speed set to ${tilesPerSecond.toFixed(1)} tiles/sec.`);
   logMessage(`Initial spawn rate set to ${spawnRateSlider.value} planes/min.`);
+  logMessage(`Runway positioned in center of airspace.`);
 });

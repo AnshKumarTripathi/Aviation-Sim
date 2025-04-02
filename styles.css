@@ -174,7 +174,7 @@ button:hover {
 }
 
 .message-log {
-  height: 150px; /* Fixed height */
+  height: 350px; /* Fixed height */
   overflow-y: auto; /* Add scrollbar if messages overflow */
   background-color: #001a00;
   border: 1px solid #006400;
