@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Air Traffic Control Sim</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <h1>Air Traffic Control Simulator</h1>
+
+  <div class="simulation-container">
+    <div id="airspace" class="airspace-grid">
+    </div>
+
+    <div class="controls">
+      <h2>CONTROLS</h2>
+      <div class="setting">
+        <label for="speed-slider">Aircraft Speed (tiles/sec): </label>
+        <input type="range" id="speed-slider" min="0.2" max="3" step="0.1" value="0.5">
+        <span id="speed-value">0.5</span> tiles/sec
+      </div>
+      <div class="setting">
+        <label for="spawn-rate-slider">Spawn Rate (planes/min): </label>
+        <input type="range" id="spawn-rate-slider" min="1" max="20" step="1" value="5">
+        <span id="spawn-rate-value">5</span> planes/min
+      </div>
+      <button id="reset-button">Reset Simulation</button>
+      <p><strong>Instructions:</strong> Click an aircraft to select it (it will turn yellow), then click on an empty
+        square to set its next waypoint. Planes land automatically when they reach the runway (green area).</p>
+    </div>
+
+    <div class="status">
+      <h2>STATUS</h2>
+      <p>Active Aircraft: <span id="active-aircraft">0</span></p>
+      <p>Landed Aircraft: <span id="landed-aircraft">0</span></p>
+      <p>Collisions: <span id="collisions">0</span></p>
+      <p id="message-log" class="message-log">System Log Initialized...</p>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+
+</html>

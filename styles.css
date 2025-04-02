@@ -1,0 +1,197 @@
+body {
+  font-family: "Courier New", Courier, monospace; /* Classic terminal/ATS font */
+  background-color: #1a1a1a; /* Dark background */
+  color: #00ff00; /* Green text */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0;
+  padding: 20px;
+}
+
+h1,
+h2 {
+  color: #00cc00;
+  border-bottom: 1px solid #00cc00;
+  padding-bottom: 5px;
+  margin-bottom: 15px;
+}
+
+.simulation-container {
+  display: flex;
+  gap: 20px; /* Space between grid, controls, status */
+  width: 95%;
+  max-width: 1400px; /* Limit overall width */
+  justify-content: center;
+  flex-wrap: wrap; /* Allow controls/status to wrap on smaller screens */
+}
+
+.airspace-grid {
+  display: grid;
+  /* Grid columns/rows will be set by JS */
+  width: 600px; /* Adjust size as needed */
+  height: 600px;
+  border: 2px solid #00ff00;
+  background-color: #001a00; /* Dark green grid background */
+  position: relative; /* Needed for absolute positioning of aircraft */
+  box-shadow: 0 0 15px #00ff00 inset; /* Inner glow effect */
+  overflow: hidden; /* Hide anything that goes outside */
+  flex-shrink: 0; /* Prevent grid from shrinking when wrapping */
+}
+
+.grid-cell {
+  /* For visualization if needed, but we'll mainly position planes */
+  border: 1px dotted #003300; /* Very faint grid lines */
+  box-sizing: border-box;
+}
+
+.runway {
+  background-color: #006400; /* Darker green for runway */
+  border: 1px solid #00ff00;
+  box-sizing: border-box;
+  position: absolute; /* Positioned by JS */
+  z-index: 0; /* Behind aircraft */
+}
+
+.aircraft {
+  position: absolute; /* Positioned by JS based on grid coords */
+  width: 20px; /* Corresponds to grid cell size - adjust if grid size changes */
+  height: 20px; /* Corresponds to grid cell size - adjust if grid size changes */
+  background-color: #00ffff; /* Cyan color for aircraft */
+  border-radius: 50%; /* Make them circles */
+  border: 1px solid #ffffff;
+  box-sizing: border-box;
+  font-size: 10px; /* For callsign inside */
+  text-align: center;
+  line-height: 18px; /* Vertically center text */
+  color: #000000;
+  font-weight: bold;
+  transition: background-color 0.2s ease, transform 0.1s linear; /* Smooth transitions */
+  z-index: 10; /* Aircraft above runway */
+  cursor: pointer; /* Indicate they are clickable */
+  /* Ensure transform doesn't affect children positioning context too much */
+  transform-style: preserve-3d;
+}
+
+/* Style for the direction arrow */
+.aircraft-arrow {
+  position: absolute;
+  top: 50%; /* Center vertically relative to parent */
+  left: 100%; /* Start at the right edge of the parent circle */
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent; /* Creates triangle shape */
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid #00ffff; /* Arrow color, points right initially */
+  transform-origin: center left; /* Rotate around the base of the arrow */
+  /* Initial transform to center vertically */
+  transform: translateY(-50%);
+  transition: border-left-color 0.2s ease; /* Match aircraft color transition */
+  /* Ensure arrow is clickable as part of the plane */
+  pointer-events: none;
+}
+
+.aircraft.selected {
+  background-color: #ffff00; /* Yellow when selected */
+  box-shadow: 0 0 10px #ffff00;
+}
+/* Change arrow color when selected */
+.aircraft.selected .aircraft-arrow {
+  border-left-color: #ffff00;
+}
+
+.aircraft.warning {
+  background-color: #ff8c00; /* Orange for collision warning */
+  box-shadow: 0 0 10px #ff8c00;
+}
+/* Change arrow color during warning */
+.aircraft.warning .aircraft-arrow {
+  border-left-color: #ff8c00;
+}
+
+.aircraft.collided {
+  background-color: #ff0000; /* Red for collision */
+  box-shadow: 0 0 10px #ff0000;
+  animation: blink 0.5s infinite alternate;
+}
+/* Hide arrow when collided */
+.aircraft.collided .aircraft-arrow {
+  display: none;
+}
+
+@keyframes blink {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.5;
+  }
+}
+
+.controls,
+.status {
+  background-color: #0d0d0d;
+  border: 1px solid #00ff00;
+  padding: 15px;
+  width: 250px; /* Adjust width */
+  height: fit-content; /* Adjust height based on content */
+  box-shadow: 0 0 10px #00ff00;
+  flex-shrink: 0; /* Prevent shrinking when wrapping */
+  margin-top: 10px; /* Add some margin when wrapping */
+}
+
+.setting {
+  margin-bottom: 15px;
+}
+
+label {
+  display: block;
+  margin-bottom: 5px;
+  color: #00cc00;
+}
+
+input[type="range"] {
+  width: 100%;
+  cursor: pointer;
+}
+
+button {
+  background-color: #003300;
+  border: 1px solid #00ff00;
+  color: #00ff00;
+  padding: 10px 15px;
+  cursor: pointer;
+  font-family: inherit; /* Use the same monospace font */
+  transition: background-color 0.2s ease, color 0.2s ease;
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+}
+
+button:hover {
+  background-color: #00ff00;
+  color: #000000;
+}
+
+.message-log {
+  height: 150px; /* Fixed height */
+  overflow-y: auto; /* Add scrollbar if messages overflow */
+  background-color: #001a00;
+  border: 1px solid #006400;
+  padding: 5px;
+  font-size: 0.9em;
+  margin-top: 10px;
+  white-space: pre-wrap; /* Preserve line breaks */
+}
+
+/* Tooltip for waypoints - if we add this feature later */
+.waypoint-indicator {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: yellow;
+  border-radius: 50%;
+  border: 1px solid black;
+  z-index: 5;
+  pointer-events: none; /* Don't interfere with clicks */
+}
