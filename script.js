@@ -136,8 +136,7 @@ document.addEventListener("DOMContentLoaded", () => {
       justCollided: false, // Flag to handle collision event once
     };
 
-    // Initial waypoint: the runway entrance
-    ac.waypoints.push({ x: RUNWAY_COL, y: ac.targetRunwayY });
+    // We no longer add initial runway waypoint - aircraft will only go to the runway if directed
 
     ac.element.classList.add("aircraft");
     ac.element.textContent = callsign; // Display callsign
@@ -155,19 +154,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     airspaceGrid.appendChild(ac.element);
     aircraft.push(ac);
-    // Calculate initial angle towards first waypoint
-    if (ac.waypoints.length > 0) {
-      const targetX = ac.waypoints[0].x;
-      const targetY = ac.waypoints[0].y;
-      const dx = targetX - ac.x;
-      const dy = targetY - ac.y;
-      ac.angle = Math.atan2(dy, dx);
-    }
+
+    // If no waypoints, aircraft will hover in place until directed
     updateAircraftElementPosition(ac); // Initial position and arrow rotation
     logMessage(
       `Aircraft ${ac.callsign} spawned at (${ac.x.toFixed(1)}, ${ac.y.toFixed(
         1
-      )}). Heading ${Math.round((ac.angle * 180) / Math.PI)}°`
+      )}). Awaiting directions.`
     );
   }
 
@@ -385,22 +378,23 @@ document.addEventListener("DOMContentLoaded", () => {
     );
     selectedAircraft.waypoints.push(newWaypoint);
 
-    // Always add the original runway target back as the *final* waypoint,
-    // unless the user specifically clicked on the runway itself.
+    // Check if the user clicked on the runway
     const isOnRunway =
       targetX >= RUNWAY_COL &&
       targetY >= RUNWAY_START_ROW &&
       targetY <= RUNWAY_END_ROW;
-    if (!isOnRunway) {
-      selectedAircraft.waypoints.push({
-        x: RUNWAY_COL,
-        y: selectedAircraft.targetRunwayY,
-      });
-    } else {
+
+    if (isOnRunway) {
       logMessage(
         `${selectedAircraft.callsign} directed to land at (${targetX.toFixed(
           1
         )}, ${targetY.toFixed(1)}).`
+      );
+    } else {
+      logMessage(
+        `New waypoint set for ${
+          selectedAircraft.callsign
+        } at (${targetX.toFixed(1)}, ${targetY.toFixed(1)}).`
       );
     }
 
@@ -412,11 +406,6 @@ document.addEventListener("DOMContentLoaded", () => {
       selectedAircraft.angle = Math.atan2(dy, dx);
     }
 
-    logMessage(
-      `New waypoint set for ${selectedAircraft.callsign} at (${targetX.toFixed(
-        1
-      )}, ${targetY.toFixed(1)}).`
-    );
     updateAircraftElementPosition(selectedAircraft); // Update visuals immediately
 
     // Keep the aircraft selected after setting a waypoint
